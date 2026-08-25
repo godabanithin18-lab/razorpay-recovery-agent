@@ -103,5 +103,205 @@
     "retryCount": 1,
     "finalized": false,
     "action": "auto_retry"
+  },
+  "pay_batch_0_3352": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_1_5621": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_2_3436": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_3_9545": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_4_6442": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_5_8152": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_6_9180": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_7_2987": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_8_1196": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_9_7086": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_10_6209": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_11_5064": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_12_1067": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_13_7529": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_14_7646": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "escalate_to_human"
+  },
+  "pay_batch_15_6337": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_16_9735": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_17_9651": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_18_5135": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_19_3491": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_0_6154": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_1_733": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_2_1234": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_3_4616": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_4_5454": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_5_6580": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_6_5008": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_7_8869": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_8_2409": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_9_4733": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_10_5846": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_11_7771": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_12_8618": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_13_6354": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_14_4498": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "escalate_to_human"
+  },
+  "pay_batch_15_5299": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
+  },
+  "pay_batch_16_6892": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "suggest_alternate_method"
+  },
+  "pay_batch_17_5208": {
+    "retryCount": 0,
+    "finalized": true,
+    "action": "send_reminder_delay"
+  },
+  "pay_batch_18_3081": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry_delayed"
+  },
+  "pay_batch_19_8450": {
+    "retryCount": 1,
+    "finalized": false,
+    "action": "auto_retry"
   }
 }

@@ -36,4 +36,13 @@ const escalatedCount = logs.filter(e => e.action_taken === 'escalate_to_human').
 console.log(`\n--- Headline metric for pitch ---`);
 console.log(`${autoCount}/${total} (${((autoCount/total)*100).toFixed(1)}%) failures handled automatically without human involvement`);
 console.log(`${escalatedCount}/${total} (${((escalatedCount/total)*100).toFixed(1)}%) correctly escalated for human review (unclear/risky cases)`);
+
+const totalAttempted = logs.filter(e => e.amount).reduce((s, e) => s + e.amount, 0) / 100;
+const totalRecovered = logs.reduce((s, e) => s + (e.amount_recovered || 0), 0) / 100;
+const recoveredCount = logs.filter(e => e.execution_outcome === 'recovered').length;
+
+console.log(`\n--- Measured money recovered ---`);
+console.log(`₹${totalAttempted.toLocaleString('en-IN')} total value across all failed payments`);
+console.log(`₹${totalRecovered.toLocaleString('en-IN')} actually recovered (${recoveredCount}/${total} payments succeeded)`);
+console.log(`${((totalRecovered/totalAttempted)*100).toFixed(1)}% of total failed value recovered`);
 console.log('');

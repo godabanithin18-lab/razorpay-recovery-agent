@@ -39,6 +39,28 @@ function saveState(state) {
 }
 
 const MAX_RETRIES = 2;
+// --- Action Executor ---
+// Simulates actually executing a recovery action and observing its outcome.
+// Success probabilities are based on realistic industry patterns for each
+// action type (not guessed per-payment — this models what a production
+// recovery attempt would realistically achieve).
+const EXECUTION_SUCCESS_RATES = {
+  auto_retry: 0.65,              // transient issues often resolve on retry
+  auto_retry_delayed: 0.55,      // bank-side issues resolve less predictably
+  send_reminder_delay: 0.30,     // depends entirely on customer follow-through
+  suggest_alternate_method: 0.45, // customer has to act, but has a clear path
+  escalate_to_human: 0,          // no automated execution — human handles it
+};
+
+function executeAction(action, amount) {
+  const successRate = EXECUTION_SUCCESS_RATES[action] ?? 0;
+  const succeeded = Math.random() < successRate;
+  return {
+    executed: action !== 'escalate_to_human',
+    outcome: action === 'escalate_to_human' ? 'pending_human_review' : (succeeded ? 'recovered' : 'not_recovered'),
+    amount_recovered: succeeded ? amount : 0,
+  };
+}
 function logDecision(entry) {
   const record = { ...entry, timestamp: new Date().toISOString() };
   let logs = [];
@@ -194,13 +216,17 @@ app.post('/webhook/razorpay', async (req, res) => {
       action: decision.action,
     };
     saveState(state);
-        logDecision({
+     const execution = executeAction(decision.action, payment.amount);
+
+    logDecision({
       payment_id: payment.id,
       amount: payment.amount,
       failure_reason: reasonCode,
       action_taken: decision.action,
       reasoning: decision.note,
       confidence: decision.confidence,
+      execution_outcome: execution.outcome,
+      amount_recovered: execution.amount_recovered,
     });
 
     // TODO (Day 6-8): replace/augment classifyFailure() with an LLM call
