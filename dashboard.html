@@ -1,135 +1,4 @@
-// generate-dashboard.js
-// Reads audit-log.json and generates a polished, professional HTML dashboard:
-// headline metrics (including money recovered), action breakdown donut,
-// confidence distribution, execution outcomes, and a recent-decisions table.
-// Run: node generate-dashboard.js, then open dashboard.html
-
-const fs = require('fs');
-
-const LOG_FILE = './audit-log.json';
-const OUTPUT_FILE = './dashboard.html';
-
-if (!fs.existsSync(LOG_FILE)) {
-  console.log('No audit-log.json found yet — run batch-test.js first.');
-  process.exit(1);
-}
-
-const logs = JSON.parse(fs.readFileSync(LOG_FILE, 'utf-8'));
-const total = logs.length;
-
-const ACTION_LABELS = {
-  auto_retry: 'Auto retry',
-  auto_retry_delayed: 'Auto retry (delayed)',
-  send_reminder_delay: 'Reminder later',
-  suggest_alternate_method: 'Alternate method',
-  escalate_to_human: 'Escalated to human',
-};
-const ACTION_COLORS = {
-  auto_retry: '#10b981',
-  auto_retry_delayed: '#059669',
-  send_reminder_delay: '#3b82f6',
-  suggest_alternate_method: '#f59e0b',
-  escalate_to_human: '#ef4444',
-};
-
-const counts = {};
-for (const entry of logs) {
-  counts[entry.action_taken] = (counts[entry.action_taken] || 0) + 1;
-}
-
-const autoRecoverable = ['auto_retry', 'auto_retry_delayed', 'send_reminder_delay', 'suggest_alternate_method'];
-const autoCount = logs.filter(e => autoRecoverable.includes(e.action_taken)).length;
-const escalatedCount = logs.filter(e => e.action_taken === 'escalate_to_human').length;
-const autoPct = ((autoCount / total) * 100).toFixed(1);
-const escPct = ((escalatedCount / total) * 100).toFixed(1);
-
-const totalAtRisk = logs.reduce((sum, e) => sum + (e.amount || 0), 0) / 100;
-const totalRecovered = logs.reduce((sum, e) => sum + (e.amount_recovered || 0), 0) / 100;
-const recoveredCount = logs.filter(e => e.execution_outcome === 'recovered').length;
-const notRecoveredCount = logs.filter(e => e.execution_outcome === 'not_recovered').length;
-const pendingCount = logs.filter(e => e.execution_outcome === 'pending_human_review').length;
-const recoveryPct = totalAtRisk > 0 ? ((totalRecovered / totalAtRisk) * 100).toFixed(1) : '0.0';
-
-const confidences = logs.filter(e => typeof e.confidence === 'number').map(e => e.confidence);
-const avgConfidence = confidences.length
-  ? (confidences.reduce((s, c) => s + c, 0) / confidences.length).toFixed(1)
-  : 'N/A';
-
-const buckets = { '0-50': 0, '51-70': 0, '71-85': 0, '86-100': 0 };
-confidences.forEach(c => {
-  if (c <= 50) buckets['0-50']++;
-  else if (c <= 70) buckets['51-70']++;
-  else if (c <= 85) buckets['71-85']++;
-  else buckets['86-100']++;
-});
-
-const labels = Object.keys(counts);
-const dataValues = Object.values(counts);
-const donutColors = labels.map(l => ACTION_COLORS[l] || '#888');
-
-const outcomeCounts = { recovered: recoveredCount, not_recovered: notRecoveredCount, pending_human_review: pendingCount };
-const OUTCOME_LABELS = { recovered: 'Recovered', not_recovered: 'Not recovered', pending_human_review: 'Pending review' };
-const OUTCOME_COLORS = { recovered: '#10b981', not_recovered: '#94a3b8', pending_human_review: '#f59e0b' };
-
-const recent = logs.slice(-10).reverse();
-
-// Detect cases where the safety layer overrode the AI's own suggestion —
-// these are the most compelling proof points that validation isn't decorative.
-const interventions = logs.filter(e =>
-  e.reasoning && (
-    e.reasoning.includes("isn't a permitted action") ||
-    e.reasoning.includes('Low AI confidence') ||
-    e.reasoning.includes('already retried') ||
-    e.reasoning.includes('failed validation')
-  )
-).slice(-3);
-
-const interventionsHtml = interventions.length ? interventions.map((e, i) => `
-  <div class="intervention-card">
-    <div class="intervention-header">
-      <span class="intervention-badge">🛡️ SAFETY OVERRIDE</span>
-      <span class="mono" style="font-size:11px">${e.payment_id}</span>
-    </div>
-    <div class="intervention-body">
-      <div class="intervention-row"><span class="i-label">Failure reason</span><span>${e.failure_reason}</span></div>
-      <div class="intervention-row"><span class="i-label">Final action</span><span class="pill" style="background:${(ACTION_COLORS[e.action_taken]||'#888')}18;color:${ACTION_COLORS[e.action_taken]||'#888'}">${ACTION_LABELS[e.action_taken] || e.action_taken}</span></div>
-      <div class="intervention-reason">"${e.reasoning}"</div>
-    </div>
-  </div>
-`).join('') : '<p style="color:var(--text-faint);font-size:13px;">No safety overrides in this batch — all AI decisions passed validation cleanly.</p>';
-const rowsHtml = recent.map((e, i) => {
-  const conf = e.confidence ?? null;
-  const confColor = conf === null ? '#94a3b8' : conf >= 85 ? '#059669' : conf >= 70 ? '#b45309' : '#b91c1c';
-  const outcome = e.execution_outcome;
-  const outcomeColor = OUTCOME_COLORS[outcome] || '#94a3b8';
-  const outcomeLabel = OUTCOME_LABELS[outcome] || '—';
-  const riskLevel = e.risk_level || 'unknown';
-  return `
-  <tr class="clickable-row" onclick="showDetail(${i})">
-    <td class="mono">${e.payment_id}</td>
-    <td class="amt">₹${(e.amount / 100).toFixed(2)}</td>
-    <td>${e.failure_reason}</td>
-    <td><span class="pill" style="background:${(ACTION_COLORS[e.action_taken] || '#888')}18;color:${ACTION_COLORS[e.action_taken] || '#888'}">${ACTION_LABELS[e.action_taken] || e.action_taken}</span></td>
-    <td><span class="pill" style="background:${outcomeColor}18;color:${outcomeColor}">${outcomeLabel}</span></td>
-    <td style="color:${confColor};font-weight:700">${conf !== null ? conf + '%' : '—'}</td>
-  </tr>`;
-}).join('');
-
-const detailData = recent.map(e => ({
-  payment_id: e.payment_id,
-  amount: (e.amount / 100).toFixed(2),
-  failure_reason: e.failure_reason,
-  action_taken: ACTION_LABELS[e.action_taken] || e.action_taken,
-  action_color: ACTION_COLORS[e.action_taken] || '#888',
-  reasoning: e.reasoning,
-  confidence: e.confidence ?? '—',
-  risk_level: e.risk_level || 'unknown',
-  execution_outcome: OUTCOME_LABELS[e.execution_outcome] || '—',
-  amount_recovered: e.amount_recovered ? (e.amount_recovered / 100).toFixed(2) : '0.00',
-  timestamp: e.timestamp,
-}));
-
-const html = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -368,7 +237,7 @@ const html = `<!DOCTYPE html>
       <div class="brand-icon">₹</div>
       <div>
         <h1>Payment Recovery Agent</h1>
-        <p class="subtitle">${total} failed payments analyzed · AI-powered decision layer</p>
+        <p class="subtitle">24 failed payments analyzed · AI-powered decision layer</p>
       </div>
     </div>
     <span class="badge"><span class="dot-live"></span> Live results</span>
@@ -378,25 +247,25 @@ const html = `<!DOCTYPE html>
     <div class="metric-card recovered">
       <div class="icon-row"><div class="mini-icon">💰</div></div>
       <div class="label">Revenue recovered</div>
-      <div class="value">₹${totalRecovered.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-      <div class="delta">of ₹${totalAtRisk.toLocaleString('en-IN', { maximumFractionDigits: 0 })} at risk</div>
+      <div class="value">₹26,486</div>
+      <div class="delta">of ₹55,424 at risk</div>
     </div>
     <div class="metric-card auto">
       <div class="icon-row"><div class="mini-icon">⚡</div></div>
       <div class="label">Handled automatically</div>
-      <div class="value">${autoPct}%</div>
-      <div class="delta">${autoCount} of ${total} payments</div>
+      <div class="value">91.7%</div>
+      <div class="delta">22 of 24 payments</div>
     </div>
     <div class="metric-card escalated">
       <div class="icon-row"><div class="mini-icon">👤</div></div>
       <div class="label">Escalated to human</div>
-      <div class="value">${escPct}%</div>
-      <div class="delta">${escalatedCount} of ${total} payments</div>
+      <div class="value">8.3%</div>
+      <div class="delta">2 of 24 payments</div>
     </div>
     <div class="metric-card confidence">
       <div class="icon-row"><div class="mini-icon">🎯</div></div>
       <div class="label">Avg. AI confidence</div>
-      <div class="value">${avgConfidence}%</div>
+      <div class="value">92.1%</div>
       <div class="delta">across all decisions</div>
     </div>
   </div>
@@ -404,12 +273,12 @@ const html = `<!DOCTYPE html>
   <div class="revenue-bar-wrap">
     <div class="revenue-bar-header">
       <h3>Revenue recovery rate</h3>
-      <span class="pct">${recoveryPct}%</span>
+      <span class="pct">47.8%</span>
     </div>
-    <div class="revenue-track"><div class="revenue-fill" style="width:${recoveryPct}%"></div></div>
+    <div class="revenue-track"><div class="revenue-fill" style="width:47.8%"></div></div>
     <div class="revenue-labels">
-      <span><b>₹${totalRecovered.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b> recovered</span>
-      <span><b>₹${totalAtRisk.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b> total failed value</span>
+      <span><b>₹26,486</b> recovered</span>
+      <span><b>₹55,424</b> total failed value</span>
     </div>
   </div>
 
@@ -422,7 +291,19 @@ const html = `<!DOCTYPE html>
       </div>
     </div>
     <div class="interventions-wrap">
-      ${interventionsHtml}
+      
+  <div class="intervention-card">
+    <div class="intervention-header">
+      <span class="intervention-badge">🛡️ SAFETY OVERRIDE</span>
+      <span class="mono" style="font-size:11px">pay_idempotency_test_001</span>
+    </div>
+    <div class="intervention-body">
+      <div class="intervention-row"><span class="i-label">Failure reason</span><span>network_error</span></div>
+      <div class="intervention-row"><span class="i-label">Final action</span><span class="pill" style="background:#ef444418;color:#ef4444">Escalated to human</span></div>
+      <div class="intervention-reason">"Payment pay_idempotency_test_001 already retried 2 times without success — escalating instead of retrying again."</div>
+    </div>
+  </div>
+
     </div>
   </div>
 
@@ -448,7 +329,87 @@ const html = `<!DOCTYPE html>
   <div class="panel table-wrap" style="padding: 0.5rem 1.6rem 1rem;">
     <table>
       <tr><th>Payment ID</th><th>Amount</th><th>Failure reason</th><th>Action</th><th>Outcome</th><th>Confidence</th></tr>
-      ${rowsHtml}
+      
+  <tr class="clickable-row" onclick="showDetail(0)">
+    <td class="mono">pay_test_44276</td>
+    <td class="amt">₹500.00</td>
+    <td>card_declined</td>
+    <td><span class="pill" style="background:#f59e0b18;color:#f59e0b">Alternate method</span></td>
+    <td><span class="pill" style="background:#94a3b818;color:#94a3b8">Not recovered</span></td>
+    <td style="color:#059669;font-weight:700">95%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(1)">
+    <td class="mono">pay_idempotency_test_001</td>
+    <td class="amt">₹2500.00</td>
+    <td>network_error</td>
+    <td><span class="pill" style="background:#ef444418;color:#ef4444">Escalated to human</span></td>
+    <td><span class="pill" style="background:#f59e0b18;color:#f59e0b">Pending review</span></td>
+    <td style="color:#059669;font-weight:700">100%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(2)">
+    <td class="mono">pay_idempotency_test_001</td>
+    <td class="amt">₹2500.00</td>
+    <td>network_error</td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Auto retry</span></td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Recovered</span></td>
+    <td style="color:#059669;font-weight:700">95%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(3)">
+    <td class="mono">pay_idempotency_test_001</td>
+    <td class="amt">₹2500.00</td>
+    <td>network_error</td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Auto retry</span></td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Recovered</span></td>
+    <td style="color:#059669;font-weight:700">90%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(4)">
+    <td class="mono">pay_batch_19_6365</td>
+    <td class="amt">₹4953.20</td>
+    <td>network_error</td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Auto retry</span></td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Recovered</span></td>
+    <td style="color:#059669;font-weight:700">95%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(5)">
+    <td class="mono">pay_batch_18_7542</td>
+    <td class="amt">₹3767.30</td>
+    <td>bank_server_down</td>
+    <td><span class="pill" style="background:#05966918;color:#059669">Auto retry (delayed)</span></td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Recovered</span></td>
+    <td style="color:#059669;font-weight:700">90%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(6)">
+    <td class="mono">pay_batch_17_9225</td>
+    <td class="amt">₹4751.99</td>
+    <td>insufficient_funds</td>
+    <td><span class="pill" style="background:#3b82f618;color:#3b82f6">Reminder later</span></td>
+    <td><span class="pill" style="background:#94a3b818;color:#94a3b8">Not recovered</span></td>
+    <td style="color:#059669;font-weight:700">90%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(7)">
+    <td class="mono">pay_batch_16_8106</td>
+    <td class="amt">₹1807.24</td>
+    <td>card_declined</td>
+    <td><span class="pill" style="background:#f59e0b18;color:#f59e0b">Alternate method</span></td>
+    <td><span class="pill" style="background:#94a3b818;color:#94a3b8">Not recovered</span></td>
+    <td style="color:#059669;font-weight:700">95%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(8)">
+    <td class="mono">pay_batch_15_294</td>
+    <td class="amt">₹1508.27</td>
+    <td>network_error</td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Auto retry</span></td>
+    <td><span class="pill" style="background:#10b98118;color:#10b981">Recovered</span></td>
+    <td style="color:#059669;font-weight:700">95%</td>
+  </tr>
+  <tr class="clickable-row" onclick="showDetail(9)">
+    <td class="mono">pay_batch_14_9893</td>
+    <td class="amt">₹1045.36</td>
+    <td>suspicious_activity_flag</td>
+    <td><span class="pill" style="background:#ef444418;color:#ef4444">Escalated to human</span></td>
+    <td><span class="pill" style="background:#f59e0b18;color:#f59e0b">Pending review</span></td>
+    <td style="color:#059669;font-weight:700">95%</td>
+  </tr>
     </table>
   </div>
 
@@ -494,33 +455,33 @@ const html = `<!DOCTYPE html>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
   <script>
-    const decisionData = ${JSON.stringify(detailData)};
+    const decisionData = [{"payment_id":"pay_test_44276","amount":"500.00","failure_reason":"card_declined","action_taken":"Alternate method","action_color":"#f59e0b","reasoning":"The payment failed due to card_declined, so prompting the customer to try UPI or another card is the appropriate recovery step.","confidence":95,"risk_level":"low","execution_outcome":"Not recovered","amount_recovered":"0.00","timestamp":"2026-09-03T04:18:53.040Z"},{"payment_id":"pay_idempotency_test_001","amount":"2500.00","failure_reason":"network_error","action_taken":"Escalated to human","action_color":"#ef4444","reasoning":"Payment pay_idempotency_test_001 already retried 2 times without success — escalating instead of retrying again.","confidence":100,"risk_level":"unknown","execution_outcome":"Pending review","amount_recovered":"0.00","timestamp":"2026-09-03T04:13:35.572Z"},{"payment_id":"pay_idempotency_test_001","amount":"2500.00","failure_reason":"network_error","action_taken":"Auto retry","action_color":"#10b981","reasoning":"The failure reason is network_error, indicating a transient issue suitable for an immediate silent retry.","confidence":95,"risk_level":"unknown","execution_outcome":"Recovered","amount_recovered":"2500.00","timestamp":"2026-09-03T04:13:34.761Z"},{"payment_id":"pay_idempotency_test_001","amount":"2500.00","failure_reason":"network_error","action_taken":"Auto retry","action_color":"#10b981","reasoning":"The failure reason code 'network_error' indicates a transient network issue, so an immediate silent retry is appropriate.","confidence":90,"risk_level":"unknown","execution_outcome":"Recovered","amount_recovered":"2500.00","timestamp":"2026-09-03T04:13:33.221Z"},{"payment_id":"pay_batch_19_6365","amount":"4953.20","failure_reason":"network_error","action_taken":"Auto retry","action_color":"#10b981","reasoning":"The failure reason code 'network_error' indicates a transient network issue, so an immediate silent retry is appropriate.","confidence":95,"risk_level":"unknown","execution_outcome":"Recovered","amount_recovered":"4953.20","timestamp":"2026-09-03T04:10:29.224Z"},{"payment_id":"pay_batch_18_7542","amount":"3767.30","failure_reason":"bank_server_down","action_taken":"Auto retry (delayed)","action_color":"#059669","reasoning":"The failure reason 'bank_server_down' indicates a temporary bank-side outage, so retrying after a delay is appropriate.","confidence":90,"risk_level":"unknown","execution_outcome":"Recovered","amount_recovered":"3767.30","timestamp":"2026-09-03T04:10:27.837Z"},{"payment_id":"pay_batch_17_9225","amount":"4751.99","failure_reason":"insufficient_funds","action_taken":"Reminder later","action_color":"#3b82f6","reasoning":"The failure reason is insufficient_funds, so we should remind the customer later to retry the payment.","confidence":90,"risk_level":"unknown","execution_outcome":"Not recovered","amount_recovered":"0.00","timestamp":"2026-09-03T04:10:26.691Z"},{"payment_id":"pay_batch_16_8106","amount":"1807.24","failure_reason":"card_declined","action_taken":"Alternate method","action_color":"#f59e0b","reasoning":"The payment failed due to a card_declined reason, so prompting the customer to try UPI or another card is the appropriate recovery step.","confidence":95,"risk_level":"unknown","execution_outcome":"Not recovered","amount_recovered":"0.00","timestamp":"2026-09-03T04:10:24.808Z"},{"payment_id":"pay_batch_15_294","amount":"1508.27","failure_reason":"network_error","action_taken":"Auto retry","action_color":"#10b981","reasoning":"The failure reason is network_error, indicating a transient issue that can be resolved by retrying the payment immediately.","confidence":95,"risk_level":"unknown","execution_outcome":"Recovered","amount_recovered":"1508.27","timestamp":"2026-09-03T04:10:23.288Z"},{"payment_id":"pay_batch_14_9893","amount":"1045.36","failure_reason":"suspicious_activity_flag","action_taken":"Escalated to human","action_color":"#ef4444","reasoning":"The failure reason suspicious_activity_flag indicates potential fraud, so escalation to a human is required.","confidence":95,"risk_level":"unknown","execution_outcome":"Pending review","amount_recovered":"0.00","timestamp":"2026-09-03T04:10:22.232Z"}];
 
     function showDetail(i) {
       const d = decisionData[i];
       const body = document.getElementById('detailBody');
-      body.innerHTML = \`
+      body.innerHTML = `
         <div class="detail-grid">
-          <div><span class="d-label">Payment ID</span><div class="d-mono">\${d.payment_id}</div></div>
-          <div><span class="d-label">Amount</span><div class="d-value">₹\${d.amount}</div></div>
-          <div><span class="d-label">Failure reason</span><div class="d-value">\${d.failure_reason}</div></div>
-          <div><span class="d-label">Risk level</span><div class="d-value" style="text-transform:capitalize">\${d.risk_level}</div></div>
+          <div><span class="d-label">Payment ID</span><div class="d-mono">${d.payment_id}</div></div>
+          <div><span class="d-label">Amount</span><div class="d-value">₹${d.amount}</div></div>
+          <div><span class="d-label">Failure reason</span><div class="d-value">${d.failure_reason}</div></div>
+          <div><span class="d-label">Risk level</span><div class="d-value" style="text-transform:capitalize">${d.risk_level}</div></div>
         </div>
         <div class="d-section">
           <span class="d-label">AI decision</span>
-          <div style="margin-top:6px"><span class="pill" style="background:\${d.action_color}18;color:\${d.action_color};font-size:13px;padding:6px 14px">\${d.action_taken}</span></div>
+          <div style="margin-top:6px"><span class="pill" style="background:${d.action_color}18;color:${d.action_color};font-size:13px;padding:6px 14px">${d.action_taken}</span></div>
         </div>
         <div class="d-section">
           <span class="d-label">Reasoning</span>
-          <p class="d-reasoning">"\${d.reasoning}"</p>
+          <p class="d-reasoning">"${d.reasoning}"</p>
         </div>
         <div class="detail-grid" style="margin-top:14px">
-          <div><span class="d-label">Confidence</span><div class="d-value">\${d.confidence}%</div></div>
-          <div><span class="d-label">Execution outcome</span><div class="d-value">\${d.execution_outcome}</div></div>
-          <div><span class="d-label">Amount recovered</span><div class="d-value" style="color:var(--accent)">₹\${d.amount_recovered}</div></div>
-          <div><span class="d-label">Timestamp</span><div class="d-value" style="font-size:11px">\${new Date(d.timestamp).toLocaleString()}</div></div>
+          <div><span class="d-label">Confidence</span><div class="d-value">${d.confidence}%</div></div>
+          <div><span class="d-label">Execution outcome</span><div class="d-value">${d.execution_outcome}</div></div>
+          <div><span class="d-label">Amount recovered</span><div class="d-value" style="color:var(--accent)">₹${d.amount_recovered}</div></div>
+          <div><span class="d-label">Timestamp</span><div class="d-value" style="font-size:11px">${new Date(d.timestamp).toLocaleString()}</div></div>
         </div>
-      \`;
+      `;
       document.getElementById('detailOverlay').classList.add('open');
     }
     function closeDetail() {
@@ -547,32 +508,32 @@ const html = `<!DOCTYPE html>
 
       const fmt = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
 
-      document.getElementById('roiResults').innerHTML = \`
+      document.getElementById('roiResults').innerHTML = `
         <div class="roi-result-card">
           <div class="label">Failed payments / month</div>
-          <div class="value">\${failedPayments.toLocaleString('en-IN')}</div>
+          <div class="value">${failedPayments.toLocaleString('en-IN')}</div>
         </div>
         <div class="roi-result-card">
           <div class="label">Recovered payments</div>
-          <div class="value">\${recoveredPayments.toLocaleString('en-IN')}</div>
+          <div class="value">${recoveredPayments.toLocaleString('en-IN')}</div>
         </div>
         <div class="roi-result-card highlight">
           <div class="label">Recovered revenue / month</div>
-          <div class="value">\${fmt(recoveredRevenue)}</div>
+          <div class="value">${fmt(recoveredRevenue)}</div>
         </div>
         <div class="roi-result-card">
           <div class="label">AI decisioning cost / month</div>
-          <div class="value" style="font-size:16px">\${fmt(monthlyAiCost)}</div>
+          <div class="value" style="font-size:16px">${fmt(monthlyAiCost)}</div>
         </div>
         <div class="roi-result-card">
           <div class="label">Return on AI cost</div>
-          <div class="value" style="font-size:16px">\${roi}×</div>
+          <div class="value" style="font-size:16px">${roi}×</div>
         </div>
         <div class="roi-result-card">
           <div class="label">Based on</div>
-          <div class="value" style="font-size:12px;font-weight:500;color:var(--text-dim)">This agent's ${recoveryPct}% measured rate*</div>
+          <div class="value" style="font-size:12px;font-weight:500;color:var(--text-dim)">This agent's 47.8% measured rate*</div>
         </div>
-      \`;
+      `;
     }
 
     ['roiTxns','roiFailRate','roiAOV','roiRecoveryRate'].forEach(id => {
@@ -583,14 +544,14 @@ const html = `<!DOCTYPE html>
     Chart.defaults.color = '#8b93a7';
     Chart.defaults.font.family = 'Inter';
 
-    const labels = ${JSON.stringify(labels.map(l => ACTION_LABELS[l] || l))};
-    const colors = ${JSON.stringify(donutColors)};
+    const labels = ["Reminder later","Alternate method","Auto retry","Auto retry (delayed)","Escalated to human"];
+    const colors = ["#3b82f6","#f59e0b","#10b981","#059669","#ef4444"];
 
     new Chart(document.getElementById('donut'), {
       type: 'doughnut',
       data: {
         labels,
-        datasets: [{ data: ${JSON.stringify(dataValues)}, backgroundColor: colors, borderWidth: 3, borderColor: '#12151c', hoverOffset: 12, hoverBorderColor: '#12151c' }]
+        datasets: [{ data: [5,5,7,5,2], backgroundColor: colors, borderWidth: 3, borderColor: '#12151c', hoverOffset: 12, hoverBorderColor: '#12151c' }]
       },
       options: {
         responsive: true,
@@ -610,9 +571,9 @@ const html = `<!DOCTYPE html>
       legendEl.appendChild(el);
     });
 
-    const outcomeLabels = ${JSON.stringify(Object.keys(outcomeCounts).map(k => OUTCOME_LABELS[k]))};
-    const outcomeColors = ${JSON.stringify(Object.keys(outcomeCounts).map(k => OUTCOME_COLORS[k]))};
-    const outcomeData = ${JSON.stringify(Object.values(outcomeCounts))};
+    const outcomeLabels = ["Recovered","Not recovered","Pending review"];
+    const outcomeColors = ["#10b981","#94a3b8","#f59e0b"];
+    const outcomeData = [11,11,2];
 
     new Chart(document.getElementById('outcomeChart'), {
       type: 'doughnut',
@@ -641,10 +602,10 @@ const html = `<!DOCTYPE html>
     new Chart(document.getElementById('confChart'), {
       type: 'bar',
       data: {
-        labels: ${JSON.stringify(Object.keys(buckets))},
+        labels: ["0-50","51-70","71-85","86-100"],
         datasets: [{
           label: 'Payments',
-          data: ${JSON.stringify(Object.values(buckets))},
+          data: [0,0,1,23],
           backgroundColor: 'rgba(16,185,129,0.55)',
           hoverBackgroundColor: '#10b981',
           borderRadius: 8,
@@ -663,8 +624,4 @@ const html = `<!DOCTYPE html>
     });
   </script>
 </body>
-</html>`;
-
-fs.writeFileSync(OUTPUT_FILE, html);
-console.log(`Dashboard generated: ${OUTPUT_FILE}`);
-console.log('Open it by double-clicking the file, or right-click → Open with browser.');
+</html>

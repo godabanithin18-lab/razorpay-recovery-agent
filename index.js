@@ -218,13 +218,14 @@ app.post('/webhook/razorpay', async (req, res) => {
     saveState(state);
      const execution = executeAction(decision.action, payment.amount);
 
-    logDecision({
+        logDecision({
       payment_id: payment.id,
       amount: payment.amount,
       failure_reason: reasonCode,
       action_taken: decision.action,
       reasoning: decision.note,
       confidence: decision.confidence,
+      risk_level: decision.risk_level,
       execution_outcome: execution.outcome,
       amount_recovered: execution.amount_recovered,
     });
